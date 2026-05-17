@@ -359,6 +359,9 @@ write_agent_instruction_file() {
   local role="$1"
   local prompt_file="$2"
 
+  # Ensure the directory for the prompt file exists
+  mkdir -p "$(dirname "$prompt_file")"
+
   cat > "$prompt_file" <<EOF
 Read swarmforge/constitution.prompt, then read every file it refers to recursively, and obey all of those instructions.
 Read swarmforge/${role}.prompt, then read every file it refers to recursively, and follow all of those instructions.
@@ -385,7 +388,10 @@ launch_role() {
     return
   fi
 
-  write_agent_instruction_file "$role" "$prompt_file"
+  if [[ "$agent" == "copilot" ]]; then
+    prompt_file="$role_worktree/.github/copilot-instructions.md"
+  fi
+  write_agent_instruction_file "$role" "$prompt_file" "$agent" "$role_worktree"
 
   case "$agent" in
     claude)
@@ -395,7 +401,7 @@ launch_role() {
       launch_cmd="export PATH='$SWARM_TOOLS_DIR:$SCRIPT_DIR':\$PATH && cd '$role_worktree' && codex -C '$role_worktree' \"\$(cat '$prompt_file')\""
       ;;
     copilot)
-      launch_cmd="export PATH='$SWARM_TOOLS_DIR:$SCRIPT_DIR':\$PATH && cd '$role_worktree' && copilot \"\$(cat '$prompt_file')\""
+      launch_cmd="export PATH='$SWARM_TOOLS_DIR:$SCRIPT_DIR':\$PATH && cd '$role_worktree' && copilot"
       ;;
   esac
 
