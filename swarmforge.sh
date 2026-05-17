@@ -423,6 +423,17 @@ end tell
 EOF
 }
 
+open_windows_terminal_window() {
+  local session="$1"
+  local title="$2"
+  local escaped_working_dir
+  local escaped_session
+
+  escaped_working_dir="$(printf '%q' "$WORKING_DIR")"
+  escaped_session="$(printf '%q' "$session")"
+  wt.exe -w new --title "$title" wsl.exe -e bash -lc "cd $escaped_working_dir && exec tmux attach-session -t $escaped_session"
+}
+
 choose_cleanup_owner() {
   CLEANUP_OWNER_INDEX=1
 }
@@ -493,6 +504,11 @@ if has_command osascript; then
     "$WINDOW_IDS_FILE" \
     "$CLEANUP_OWNER_INDEX" \
     "$WORKING_DIR" > "$WINDOW_WATCHDOG_LOG" 2>&1 &
+elif has_command wt.exe; then
+  echo -e "Opening separate Windows Terminal windows for each session..."
+  for (( i = 1; i <= ${#ROLES[@]}; i++ )); do
+    open_windows_terminal_window "${SESSIONS[$i]}" "SwarmForge ${DISPLAY_NAMES[$i]}"
+  done
 else
   echo -e "${YELLOW}osascript not found; attaching current shell to '${SESSIONS[$CLEANUP_OWNER_INDEX]}' instead.${RESET}"
   tmux attach-session -t "${SESSIONS[$CLEANUP_OWNER_INDEX]}"
