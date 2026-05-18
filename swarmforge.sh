@@ -1,6 +1,5 @@
 #!/usr/bin/env zsh
 set -euo pipefail
-set -x
 
 SESSION_PREFIX="swarmforge"
 AGENT_WINDOW="swarm"
