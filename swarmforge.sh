@@ -1,5 +1,6 @@
 #!/usr/bin/env zsh
 set -euo pipefail
+set -x
 
 SESSION_PREFIX="swarmforge"
 AGENT_WINDOW="swarm"
@@ -401,7 +402,7 @@ launch_role() {
       launch_cmd="export PATH='$SWARM_TOOLS_DIR:$SCRIPT_DIR':\$PATH && cd '$role_worktree' && codex -C '$role_worktree' \"\$(cat '$prompt_file')\""
       ;;
     copilot)
-      launch_cmd="export PATH='$SWARM_TOOLS_DIR:$SCRIPT_DIR':\$PATH && cd '$role_worktree' && copilot"
+      launch_cmd="export PATH='$SWARM_TOOLS_DIR:$SCRIPT_DIR':\$PATH && cd '$role_worktree' && copilot --allow-all-tools --allow-all-paths"
       ;;
   esac
 
