@@ -322,6 +322,15 @@ prepare_workspace() {
 
 prepare_worktrees() {
   local i worktree_name worktree_path branch_name
+  local start_branch start_ref
+
+  start_branch="$(git -C "$WORKING_DIR" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  if [[ -n "$start_branch" ]]; then
+    start_ref="$start_branch"
+  else
+    start_ref="$(git -C "$WORKING_DIR" rev-parse --verify HEAD)"
+  fi
+
   for (( i = 1; i <= ${#ROLES[@]}; i++ )); do
     worktree_name="${WORKTREE_NAMES[$i]}"
     worktree_path="${WORKTREE_PATHS[$i]}"
@@ -332,10 +341,11 @@ prepare_worktrees() {
     fi
 
     if [[ -e "$worktree_path/.git" || -d "$worktree_path/.git" ]]; then
+      git -C "$worktree_path" checkout -B "$branch_name" "$start_ref" --force >/dev/null
       continue
     fi
 
-    git -C "$WORKING_DIR" worktree add --force -B "$branch_name" "$worktree_path" HEAD >/dev/null
+    git -C "$WORKING_DIR" worktree add --force -B "$branch_name" "$worktree_path" "$start_ref" >/dev/null
   done
 }
 
