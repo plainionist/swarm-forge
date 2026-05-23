@@ -362,14 +362,50 @@ create_role_session() {
 write_agent_instruction_file() {
   local role="$1"
   local prompt_file="$2"
+  local constitution_line="Read swarmforge/constitution.prompt, then read every file it refers to recursively, and obey all of those instructions."
+  local role_line="Read swarmforge/${role}.prompt, then read every file it refers to recursively, and follow all of those instructions."
+  local handoff_line="For handoffs, run $SWARM_TOOLS_DIR/notify-agent.sh directly instead of relying on PATH lookup."
+  local marker="---swarm-forge---"
 
   # Ensure the directory for the prompt file exists
   mkdir -p "$(dirname "$prompt_file")"
 
+  if [[ "$prompt_file:t" == "copilot-instructions.md" && "$prompt_file:h:t" == ".github" ]]; then
+    local header_block
+    header_block="$marker
+$constitution_line
+$role_line
+$handoff_line
+$marker"
+
+    if [[ ! -f "$prompt_file" ]]; then
+      print -r -- "$header_block" > "$prompt_file"
+      return
+    fi
+
+    local content prefix after_start suffix
+    content="$(<"$prompt_file")"
+    if [[ "$content" == *"$marker"*"$marker"* ]]; then
+      prefix="${content%%$marker*}"
+      after_start="${content#*$marker}"
+      suffix="${after_start#*$marker}"
+      print -r -- "${prefix}${header_block}${suffix}" > "$prompt_file"
+    else
+      if [[ -n "$content" ]]; then
+        print -r -- "$header_block
+
+$content" > "$prompt_file"
+      else
+        print -r -- "$header_block" > "$prompt_file"
+      fi
+    fi
+    return
+  fi
+
   cat > "$prompt_file" <<EOF
-Read swarmforge/constitution.prompt, then read every file it refers to recursively, and obey all of those instructions.
-Read swarmforge/${role}.prompt, then read every file it refers to recursively, and follow all of those instructions.
-For handoffs, run $SWARM_TOOLS_DIR/notify-agent.sh directly instead of relying on PATH lookup.
+$constitution_line
+$role_line
+$handoff_line
 EOF
 }
 
