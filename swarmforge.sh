@@ -409,7 +409,7 @@ launch_role() {
       launch_cmd="export PATH='$SWARM_TOOLS_DIR:$SCRIPT_DIR':\$PATH && cd '$role_worktree' && codex -C '$role_worktree' \"\$(cat '$prompt_file')\""
       ;;
     copilot)
-      launch_cmd="export PATH='$SWARM_TOOLS_DIR:$SCRIPT_DIR':\$PATH && cd '$role_worktree' && copilot --yolo --prompt \"\$(cat '$prompt_file')\""
+      launch_cmd="export PATH='$SWARM_TOOLS_DIR:$SCRIPT_DIR':\$PATH && cd '$role_worktree' && copilot --yolo"
       ;;
   esac
 
@@ -425,6 +425,11 @@ launch_role() {
 
   tmux send-keys -t "${session}:${display}.0" "$launch_cmd" Enter
   echo -e "  ${CYAN}[${display}]${RESET} started in session ${session}"
+
+  if [[ "$agent" == "copilot" ]]; then
+    sleep 5
+    "$SWARM_TOOLS_DIR/notify-agent.sh" "$role" "$(<"$prompt_file")"
+  fi
 }
 
 open_terminal_window() {
