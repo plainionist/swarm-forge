@@ -375,6 +375,7 @@ write_agent_instruction_file() {
   local constitution_line="Read swarmforge/constitution.prompt, then read every file it refers to recursively, and obey all of those instructions."
   local role_line="Read swarmforge/${role}.prompt, then read every file it refers to recursively, and follow all of those instructions."
   local handoff_line="For handoffs, run $SWARM_TOOLS_DIR/notify-agent.sh directly instead of relying on PATH lookup."
+  local summary_line="finish by summarizing your role"
   local marker="---swarm-forge---"
 
   # Ensure the directory for the prompt file exists
@@ -386,6 +387,7 @@ write_agent_instruction_file() {
 $constitution_line
 $role_line
 $handoff_line
+$summary_line
 $marker"
 
     if [[ ! -f "$prompt_file" ]]; then
@@ -393,18 +395,25 @@ $marker"
       return
     fi
 
-    local content prefix after_start suffix
+    local content prefix after_start suffix base_content
     content="$(<"$prompt_file")"
     if [[ "$content" == *"$marker"*"$marker"* ]]; then
       prefix="${content%%$marker*}"
       after_start="${content#*$marker}"
       suffix="${after_start#*$marker}"
-      print -r -- "${prefix}${header_block}${suffix}" > "$prompt_file"
+      base_content="${prefix}${suffix}"
+      if [[ -n "$base_content" ]]; then
+        print -r -- "${base_content}
+
+$header_block" > "$prompt_file"
+      else
+        print -r -- "$header_block" > "$prompt_file"
+      fi
     else
       if [[ -n "$content" ]]; then
-        print -r -- "$header_block
+        print -r -- "$content
 
-$content" > "$prompt_file"
+$header_block" > "$prompt_file"
       else
         print -r -- "$header_block" > "$prompt_file"
       fi
