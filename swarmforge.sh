@@ -359,9 +359,6 @@ write_agent_instruction_file() {
   local role="$1"
   local prompt_file="$2"
 
-  # Ensure the directory for the prompt file exists
-  mkdir -p "$(dirname "$prompt_file")"
-
   cat > "$prompt_file" <<EOF
 Read swarmforge/constitution.prompt, then read every file it refers to recursively, and obey all of those instructions.
 Read swarmforge/${role}.prompt, then read every file it refers to recursively, and follow all of those instructions.
@@ -388,7 +385,7 @@ launch_role() {
     return
   fi
 
-  write_agent_instruction_file "$role" "$prompt_file" "$agent" "$role_worktree"
+  write_agent_instruction_file "$role" "$prompt_file"
 
   case "$agent" in
     claude)
