@@ -372,59 +372,11 @@ create_role_session() {
 write_agent_instruction_file() {
   local role="$1"
   local prompt_file="$2"
-  local constitution_line="Read swarmforge/constitution.prompt, then read every file it refers to recursively, and obey all of those instructions."
-  local role_line="Read swarmforge/${role}.prompt, then read every file it refers to recursively, and follow all of those instructions."
-  local handoff_line="For handoffs, run $SWARM_TOOLS_DIR/notify-agent.sh directly instead of relying on PATH lookup."
-  local summary_line="finish by summarizing your role"
-  local marker="---swarm-forge---"
-
-  # Ensure the directory for the prompt file exists
-  mkdir -p "$(dirname "$prompt_file")"
-
-  if [[ "$prompt_file:t" == "copilot-instructions.md" && "$prompt_file:h:t" == ".github" ]]; then
-    local header_block
-    header_block="$marker
-$constitution_line
-$role_line
-$handoff_line
-$summary_line
-$marker"
-
-    if [[ ! -f "$prompt_file" ]]; then
-      print -r -- "$header_block" > "$prompt_file"
-      return
-    fi
-
-    local content prefix after_start suffix base_content
-    content="$(<"$prompt_file")"
-    if [[ "$content" == *"$marker"*"$marker"* ]]; then
-      prefix="${content%%$marker*}"
-      after_start="${content#*$marker}"
-      suffix="${after_start#*$marker}"
-      base_content="${prefix}${suffix}"
-      if [[ -n "$base_content" ]]; then
-        print -r -- "${base_content}
-
-$header_block" > "$prompt_file"
-      else
-        print -r -- "$header_block" > "$prompt_file"
-      fi
-    else
-      if [[ -n "$content" ]]; then
-        print -r -- "$content
-
-$header_block" > "$prompt_file"
-      else
-        print -r -- "$header_block" > "$prompt_file"
-      fi
-    fi
-    return
-  fi
 
   cat > "$prompt_file" <<EOF
-$constitution_line
-$role_line
-$handoff_line
+Read swarmforge/constitution.prompt, then read every file it refers to recursively, and obey all of those instructions.
+Read swarmforge/${role}.prompt, then read every file it refers to recursively, and follow all of those instructions.
+For handoffs, run $SWARM_TOOLS_DIR/notify-agent.sh directly instead of relying on PATH lookup.
 EOF
 }
 
@@ -447,9 +399,6 @@ launch_role() {
     return
   fi
 
-  if [[ "$agent" == "copilot" ]]; then
-    prompt_file="$role_worktree/.github/copilot-instructions.md"
-  fi
   write_agent_instruction_file "$role" "$prompt_file" "$agent" "$role_worktree"
 
   case "$agent" in
@@ -460,7 +409,7 @@ launch_role() {
       launch_cmd="export PATH='$SWARM_TOOLS_DIR:$SCRIPT_DIR':\$PATH && cd '$role_worktree' && codex -C '$role_worktree' \"\$(cat '$prompt_file')\""
       ;;
     copilot)
-      launch_cmd="export PATH='$SWARM_TOOLS_DIR:$SCRIPT_DIR':\$PATH && cd '$role_worktree' && copilot --yolo"
+      launch_cmd="export PATH='$SWARM_TOOLS_DIR:$SCRIPT_DIR':\$PATH && cd '$role_worktree' && copilot --yolo --prompt \"\$(cat '$prompt_file')\""
       ;;
   esac
 
