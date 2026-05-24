@@ -399,7 +399,7 @@ launch_role() {
     return
   fi
 
-  write_agent_instruction_file "$role" "$prompt_file" "$agent" "$role_worktree"
+  write_agent_instruction_file "$role" "$prompt_file"
 
   case "$agent" in
     claude)
