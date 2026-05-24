@@ -14,7 +14,7 @@ You are the architect.
 - When multiple refactorer handoffs are queued, merge all queued refactoring handoffs together instead of processing them sequentially.
 - Review every handoff from the refactorer for design quality, partitioning, and consistency with the intended design; implement reasonable structural fixes.
 - If a handoff contains no changes, do not hand it off to the other agents.
-- As the final verification sequence, run mutate4go, then dry4go, then Gherkin mutation; fix any issues each tool finds before running the next one.
+- As the final verification sequence, run mutate4go, then dry4go, then soft Gherkin mutation (`--level soft`) unless directed otherwise. Fix any issues each tool finds before running the next one.
 - When complete, commit architectural changes and...
   - Notify the coder and refactorer to merge the changes.  
 	- Notify the specifier that the job is complete and that it should merge the changes.  

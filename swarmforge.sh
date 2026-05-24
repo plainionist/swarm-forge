@@ -100,6 +100,10 @@ remove_nonessential_clone_files() {
     return
   fi
 
+  if [[ -d "$STATE_DIR" ]]; then
+    return
+  fi
+
   if [[ "$WORKING_DIR" != "$SCRIPT_DIR" ]]; then
     return
   fi
