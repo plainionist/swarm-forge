@@ -25,6 +25,11 @@ WINDOW_STATE_FILE="$STATE_DIR/windows.tsv"
 WINDOW_WATCHDOG_LOG="$STATE_DIR/window-watchdog.log"
 SESSIONS_FILE="$STATE_DIR/sessions.tsv"
 PROMPTS_DIR="$STATE_DIR/prompts"
+TMUX_SOCKET_DIR="/private/tmp/swarmforge-${UID}"
+PROJECT_SOCKET_ID="$(printf '%s' "$WORKING_DIR" | cksum)"
+PROJECT_SOCKET_ID="${PROJECT_SOCKET_ID%% *}"
+TMUX_SOCKET="$TMUX_SOCKET_DIR/$PROJECT_SOCKET_ID.sock"
+TMUX_SOCKET_FILE="$STATE_DIR/tmux-socket"
 
 typeset -a ROLES=()
 typeset -a AGENTS=()
@@ -286,6 +291,12 @@ find_project_dir() {
 
 PROJECT_DIR="$(find_project_dir)"
 SESSIONS_FILE="$PROJECT_DIR/.swarmforge/sessions.tsv"
+TMUX_SOCKET_FILE="$PROJECT_DIR/.swarmforge/tmux-socket"
+if [[ ! -f "$TMUX_SOCKET_FILE" ]]; then
+  echo "Tmux socket file not found: $TMUX_SOCKET_FILE" >&2
+  exit 1
+fi
+TMUX_SOCKET="$(< "$TMUX_SOCKET_FILE")"
 
 if [[ $# -lt 2 ]]; then
   echo "Usage: notify-agent.sh <target-role-or-index> \"message\"" >&2
@@ -317,18 +328,19 @@ TARGET_SESSION=$(resolve_session "$1") || {
 }
 
 MESSAGE="${*:2}"
-tmux send-keys -t "${TARGET_SESSION}:0.0" -l -- "$MESSAGE"
+tmux -S "$TMUX_SOCKET" send-keys -t "${TARGET_SESSION}:0.0" -l -- "$MESSAGE"
 sleep 0.15
-tmux send-keys -t "${TARGET_SESSION}:0.0" C-m
+tmux -S "$TMUX_SOCKET" send-keys -t "${TARGET_SESSION}:0.0" C-m
 sleep 0.05
-tmux send-keys -t "${TARGET_SESSION}:0.0" C-j
+tmux -S "$TMUX_SOCKET" send-keys -t "${TARGET_SESSION}:0.0" C-j
 EOF
 
   chmod +x "$SWARM_TOOLS_DIR/notify-agent.sh"
 }
 
 prepare_workspace() {
-  mkdir -p "$WORKING_DIR/logs" "$WORKING_DIR/agent_context" "$STATE_DIR" "$PROMPTS_DIR" "$SWARM_TOOLS_DIR" "$WORKTREES_DIR"
+  mkdir -p "$WORKING_DIR/logs" "$WORKING_DIR/agent_context" "$STATE_DIR" "$PROMPTS_DIR" "$SWARM_TOOLS_DIR" "$WORKTREES_DIR" "$TMUX_SOCKET_DIR"
+  printf '%s\n' "$TMUX_SOCKET" > "$TMUX_SOCKET_FILE"
   check_helper_scripts
   write_sessions_file
   write_notify_script
@@ -395,9 +407,9 @@ create_role_session() {
   local session="$1"
   local title="$2"
 
-  tmux new-session -d -s "$session" -n "$AGENT_WINDOW"
-  tmux rename-window -t "$session:$AGENT_WINDOW" "$title"
-  tmux set-window-option -t "$session:$title" allow-rename off
+  tmux -S "$TMUX_SOCKET" new-session -d -s "$session" -n "$AGENT_WINDOW"
+  tmux -S "$TMUX_SOCKET" rename-window -t "$session:$AGENT_WINDOW" "$title"
+  tmux -S "$TMUX_SOCKET" set-window-option -t "$session:$title" allow-rename off
 }
 
 write_agent_instruction_file() {
@@ -435,7 +447,7 @@ launch_role() {
   esac
 
   if [[ "$index" -eq "${CLEANUP_OWNER_INDEX}" ]]; then
-    launch_cmd="${launch_cmd}; exit_code=\$?; nohup '$SCRIPT_DIR/swarm-cleanup.sh' '$WINDOW_IDS_FILE'"
+    launch_cmd="${launch_cmd}; exit_code=\$?; nohup '$SCRIPT_DIR/swarm-cleanup.sh' '$TMUX_SOCKET' '$WINDOW_IDS_FILE'"
     local session_name
     for session_name in "${SESSIONS[@]}"; do
       [[ -n "$session_name" ]] || continue
@@ -444,7 +456,7 @@ launch_role() {
     launch_cmd+=" >/dev/null 2>&1 &!; exit \$exit_code"
   fi
 
-  tmux send-keys -t "${session}:${display}.0" "$launch_cmd" Enter
+  tmux -S "$TMUX_SOCKET" send-keys -t "${session}:${display}.0" "$launch_cmd" Enter
   echo -e "  ${CYAN}[${display}]${RESET} started in session ${session}"
 
   if [[ "$agent" == "copilot" ]]; then
@@ -460,7 +472,7 @@ open_terminal_window() {
 tell application "Terminal"
   activate
   set newTab to do script ""
-  do script "cd '$WORKING_DIR' && exec tmux attach-session -t '${session}'" in newTab
+  do script "cd '$WORKING_DIR' && exec tmux -S '$TMUX_SOCKET' attach-session -t '${session}'" in newTab
   set custom title of newTab to "${title}"
   return id of front window
 end tell
@@ -496,9 +508,9 @@ choose_cleanup_owner
 local_session=""
 for local_session in "${SESSIONS[@]}"; do
   [[ -n "$local_session" ]] || continue
-  if tmux has-session -t "$local_session" 2>/dev/null; then
+  if tmux -S "$TMUX_SOCKET" has-session -t "$local_session" 2>/dev/null; then
     echo -e "${YELLOW}Existing SwarmForge session found: ${local_session}. Killing it...${RESET}"
-    tmux kill-session -t "$local_session"
+    tmux -S "$TMUX_SOCKET" kill-session -t "$local_session"
   fi
 done
 
@@ -528,7 +540,7 @@ for (( i = 1; i <= ${#ROLES[@]}; i++ )); do
 done
 echo ""
 echo -e "${GREEN}Tip: Use $WORKING_DIR/swarmtools/notify-agent.sh <role-or-index> \"message\" while the swarm is running.${RESET}"
-echo -e "${GREEN}Tip: Reattach manually with 'tmux attach-session -t <session-name>' if needed.${RESET}"
+echo -e "${GREEN}Tip: Reattach manually with 'tmux -S $TMUX_SOCKET attach-session -t <session-name>' if needed.${RESET}"
 echo ""
 
 if has_command osascript; then
@@ -548,6 +560,7 @@ if has_command osascript; then
     "$WINDOW_STATE_FILE" \
     "$WINDOW_IDS_FILE" \
     "$CLEANUP_OWNER_INDEX" \
+    "$TMUX_SOCKET" \
     "$WORKING_DIR" > "$WINDOW_WATCHDOG_LOG" 2>&1 &
 elif has_command wt.exe; then
   echo -e "Opening separate Windows Terminal windows for each session..."
@@ -556,5 +569,5 @@ elif has_command wt.exe; then
   done
 else
   echo -e "${YELLOW}osascript not found; attaching current shell to '${SESSIONS[$CLEANUP_OWNER_INDEX]}' instead.${RESET}"
-  tmux attach-session -t "${SESSIONS[$CLEANUP_OWNER_INDEX]}"
+  tmux -S "$TMUX_SOCKET" attach-session -t "${SESSIONS[$CLEANUP_OWNER_INDEX]}"
 fi
