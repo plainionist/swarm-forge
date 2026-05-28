@@ -208,7 +208,7 @@ parse_config() {
     fi
 
     case "$agent" in
-      claude|codex|copilot) ;;
+      claude|codex|copilot|grok) ;;
       *)
         echo -e "${RED}Error:${RESET} Unsupported agent '$agent' for role '$role'"
         exit 1
@@ -300,6 +300,7 @@ TMUX_SOCKET="$(< "$TMUX_SOCKET_FILE")"
 
 if [[ $# -lt 2 ]]; then
   echo "Usage: notify-agent.sh <target-role-or-index> \"message\"" >&2
+  echo "       notify-agent.sh <target-role-or-index> --file <message-file>" >&2
   exit 1
 fi
 
@@ -327,7 +328,22 @@ TARGET_SESSION=$(resolve_session "$1") || {
   exit 1
 }
 
-MESSAGE="${*:2}"
+shift
+if [[ "${1:-}" == "--file" ]]; then
+  if [[ $# -ne 2 ]]; then
+    echo "Usage: notify-agent.sh <target-role-or-index> --file <message-file>" >&2
+    exit 1
+  fi
+  MESSAGE_FILE="$2"
+  if [[ ! -f "$MESSAGE_FILE" ]]; then
+    echo "Message file not found: $MESSAGE_FILE" >&2
+    exit 1
+  fi
+  MESSAGE="$(< "$MESSAGE_FILE")"
+else
+  MESSAGE="$*"
+fi
+
 tmux -S "$TMUX_SOCKET" send-keys -t "${TARGET_SESSION}:0.0" -l -- "$MESSAGE"
 sleep 0.15
 tmux -S "$TMUX_SOCKET" send-keys -t "${TARGET_SESSION}:0.0" C-m
@@ -398,6 +414,7 @@ check_backend_dependencies() {
     case "${AGENTS[$i]}" in
       claude) check_dependency claude ;;
       codex) check_dependency codex ;;
+      grok) check_dependency grok ;;
       copilot) check_dependency copilot ;;
     esac
   done
@@ -422,6 +439,21 @@ Read swarmforge/${role}.prompt, then read every file it refers to recursively, a
 EOF
 }
 
+send_initial_grok_prompt() {
+  local session="$1"
+  local display="$2"
+  local prompt_file="$3"
+
+  (
+    sleep 3
+    tmux -S "$TMUX_SOCKET" send-keys -t "${session}:${display}.0" -l -- "$(< "$prompt_file")"
+    sleep 0.15
+    tmux -S "$TMUX_SOCKET" send-keys -t "${session}:${display}.0" C-m
+    sleep 0.05
+    tmux -S "$TMUX_SOCKET" send-keys -t "${session}:${display}.0" C-j
+  ) &!
+}
+
 launch_role() {
   local index="$1"
   local role="${ROLES[$index]}"
@@ -441,6 +473,9 @@ launch_role() {
     codex)
       launch_cmd="export PATH='$SWARM_TOOLS_DIR:$SCRIPT_DIR':\$PATH && cd '$role_worktree' && codex -C '$role_worktree' \"\$(cat '$prompt_file')\""
       ;;
+    grok)
+      launch_cmd="export PATH='$SWARM_TOOLS_DIR:$SCRIPT_DIR':\$PATH && cd '$role_worktree' && grok --cwd '$role_worktree' --permission-mode acceptEdits --rules \"\$(cat '$prompt_file')\""
+      ;;
     copilot)
       launch_cmd="export PATH='$SWARM_TOOLS_DIR:$SCRIPT_DIR':\$PATH && cd '$role_worktree' && copilot --yolo"
       ;;
@@ -457,6 +492,9 @@ launch_role() {
   fi
 
   tmux -S "$TMUX_SOCKET" send-keys -t "${session}:${display}.0" "$launch_cmd" Enter
+  if [[ "$agent" == "grok" ]]; then
+    send_initial_grok_prompt "$session" "$display" "$prompt_file"
+  fi
   echo -e "  ${CYAN}[${display}]${RESET} started in session ${session}"
 
   if [[ "$agent" == "copilot" ]]; then
@@ -539,7 +577,7 @@ for (( i = 1; i <= ${#ROLES[@]}; i++ )); do
   echo -e "  ${DISPLAY_NAMES[$i]}: ${SESSIONS[$i]}"
 done
 echo ""
-echo -e "${GREEN}Tip: Use $WORKING_DIR/swarmtools/notify-agent.sh <role-or-index> \"message\" while the swarm is running.${RESET}"
+echo -e "${GREEN}Tip: Use $WORKING_DIR/swarmtools/notify-agent.sh <role-or-index> --file <message-file> while the swarm is running.${RESET}"
 echo -e "${GREEN}Tip: Reattach manually with 'tmux -S $TMUX_SOCKET attach-session -t <session-name>' if needed.${RESET}"
 echo ""
 

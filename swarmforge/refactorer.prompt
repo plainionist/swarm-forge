@@ -14,4 +14,4 @@ You are the refactorer.
 - Do not introduce new behavior.
 - Keep refactors small enough to verify locally.
 - Verify by running acceptance and unit tests.
-- When complete, commit and notify the architect using the handoff format.
+- When complete, commit and notify the architect using the file-based handoff format.
