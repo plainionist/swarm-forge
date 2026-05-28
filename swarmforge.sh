@@ -439,7 +439,7 @@ Read swarmforge/${role}.prompt, then read every file it refers to recursively, a
 EOF
 }
 
-send_initial_grok_prompt() {
+send_initial_prompt_via_tmux() {
   local session="$1"
   local display="$2"
   local prompt_file="$3"
@@ -492,15 +492,10 @@ launch_role() {
   fi
 
   tmux -S "$TMUX_SOCKET" send-keys -t "${session}:${display}.0" "$launch_cmd" Enter
-  if [[ "$agent" == "grok" ]]; then
-    send_initial_grok_prompt "$session" "$display" "$prompt_file"
+  if [[ "$agent" == "grok" || "$agent" == "copilot" ]]; then
+    send_initial_prompt_via_tmux "$session" "$display" "$prompt_file"
   fi
   echo -e "  ${CYAN}[${display}]${RESET} started in session ${session}"
-
-  if [[ "$agent" == "copilot" ]]; then
-    sleep 5
-    "$SWARM_TOOLS_DIR/notify-agent.sh" "$role" "$(<"$prompt_file")"
-  fi
 }
 
 open_terminal_window() {
