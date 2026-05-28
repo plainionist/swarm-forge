@@ -79,6 +79,20 @@ EOF
   fi
 }
 
+ensure_runtime_git_excludes() {
+  local exclude_file
+  exclude_file="$(git -C "$WORKING_DIR" rev-parse --git-path info/exclude)"
+  mkdir -p "${exclude_file:h}"
+  touch "$exclude_file"
+
+  local pattern
+  for pattern in ".swarmforge/" ".worktrees/" "swarmtools/" "logs/" "agent_context/"; do
+    if ! grep -qx "$pattern" "$exclude_file"; then
+      echo "$pattern" >> "$exclude_file"
+    fi
+  done
+}
+
 initialize_git_repo() {
   if [[ -d "$WORKING_DIR/.git" ]]; then
     return
@@ -189,7 +203,7 @@ parse_config() {
     fi
 
     case "$agent" in
-      claude|codex|copilot|none) ;;
+      claude|codex|copilot) ;;
       *)
         echo -e "${RED}Error:${RESET} Unsupported agent '$agent' for role '$role'"
         exit 1
@@ -272,7 +286,6 @@ find_project_dir() {
 
 PROJECT_DIR="$(find_project_dir)"
 SESSIONS_FILE="$PROJECT_DIR/.swarmforge/sessions.tsv"
-LOG_FILE="$PROJECT_DIR/logs/agent_messages.log"
 
 if [[ $# -lt 2 ]]; then
   echo "Usage: notify-agent.sh <target-role-or-index> \"message\"" >&2
@@ -304,9 +317,6 @@ TARGET_SESSION=$(resolve_session "$1") || {
 }
 
 MESSAGE="${*:2}"
-TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-mkdir -p "$PROJECT_DIR/logs"
-echo "[$TIMESTAMP] [$TARGET_SESSION] $MESSAGE" >> "$LOG_FILE"
 tmux send-keys -t "${TARGET_SESSION}:0.0" -l -- "$MESSAGE"
 sleep 0.15
 tmux send-keys -t "${TARGET_SESSION}:0.0" C-m
@@ -322,6 +332,22 @@ prepare_workspace() {
   check_helper_scripts
   write_sessions_file
   write_notify_script
+}
+
+write_worktree_notify_wrapper() {
+  local worktree_path="$1"
+  local wrapper_dir="$worktree_path/swarmtools"
+  local wrapper="$wrapper_dir/notify-agent.sh"
+  local canonical_notify="$SWARM_TOOLS_DIR/notify-agent.sh"
+
+  mkdir -p "$wrapper_dir"
+  {
+    echo '#!/usr/bin/env zsh'
+    echo 'set -euo pipefail'
+    printf 'CANONICAL_NOTIFY_AGENT=%q\n' "$canonical_notify"
+    echo 'exec "$CANONICAL_NOTIFY_AGENT" "$@"'
+  } > "$wrapper"
+  chmod +x "$wrapper"
 }
 
 prepare_worktrees() {
@@ -344,12 +370,13 @@ prepare_worktrees() {
       continue
     fi
 
-    if [[ -e "$worktree_path/.git" || -d "$worktree_path/.git" ]]; then
+    if [[ ! -e "$worktree_path/.git" && ! -d "$worktree_path/.git" ]]; then
+      git -C "$WORKING_DIR" worktree add --force -B "$branch_name" "$worktree_path" HEAD >/dev/null
+    else
       git -C "$worktree_path" checkout -B "$branch_name" "$start_ref" --force >/dev/null
-      continue
     fi
 
-    git -C "$WORKING_DIR" worktree add --force -B "$branch_name" "$worktree_path" "$start_ref" >/dev/null
+    write_worktree_notify_wrapper "$worktree_path"
   done
 }
 
@@ -380,7 +407,6 @@ write_agent_instruction_file() {
   cat > "$prompt_file" <<EOF
 Read swarmforge/constitution.prompt, then read every file it refers to recursively, and obey all of those instructions.
 Read swarmforge/${role}.prompt, then read every file it refers to recursively, and follow all of those instructions.
-For handoffs, run $SWARM_TOOLS_DIR/notify-agent.sh directly instead of relying on PATH lookup.
 EOF
 }
 
@@ -393,15 +419,6 @@ launch_role() {
   local role_worktree="${WORKTREE_PATHS[$index]}"
   local prompt_file="$PROMPTS_DIR/${role}.md"
   local launch_cmd=""
-
-  if [[ "$agent" == "none" ]]; then
-    if [[ "$role" == "logger" ]]; then
-      tmux send-keys -t "${session}:${display}.0" \
-        "cd '$WORKING_DIR' && touch logs/agent_messages.log && tail -f logs/agent_messages.log" Enter
-    fi
-    echo -e "  ${CYAN}[${display}]${RESET} opened without agent backend"
-    return
-  fi
 
   write_agent_instruction_file "$role" "$prompt_file"
 
@@ -469,6 +486,7 @@ check_dependency tmux
 check_dependency git
 remove_nonessential_clone_files
 initialize_git_repo
+ensure_runtime_git_excludes
 parse_config
 check_backend_dependencies
 prepare_workspace
